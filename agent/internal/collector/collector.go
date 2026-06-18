@@ -4,6 +4,7 @@ package collector
 // Fields are pointers so omitempty works correctly for null values.
 type StatusPacket struct {
 	V         int       `json:"v"`
+	Ts        int64     `json:"ts"`
 	Hostname  string    `json:"hostname"`
 	IPs       []string  `json:"ips"`
 	PrimaryIf string    `json:"primary_if,omitempty"`

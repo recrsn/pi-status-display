@@ -19,6 +19,9 @@ bool model_parse(status_model_t *dst, const char *json, size_t len) {
     item = cJSON_GetObjectItemCaseSensitive(root, "v");
     if (cJSON_IsNumber(item)) dst->v = (int)item->valuedouble;
 
+    item = cJSON_GetObjectItemCaseSensitive(root, "ts");
+    if (cJSON_IsNumber(item)) dst->ts = (int64_t)item->valuedouble;
+
     item = cJSON_GetObjectItemCaseSensitive(root, "hostname");
     if (cJSON_IsString(item)) safe_strncpy(dst->hostname, item->valuestring, sizeof(dst->hostname));
 

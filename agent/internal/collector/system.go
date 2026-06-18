@@ -14,6 +14,8 @@ import (
 )
 
 func collectSystem(pkt *StatusPacket, cpuThresh, tempThresh float64) {
+	pkt.Ts = time.Now().Unix()
+
 	if h, err := os.Hostname(); err == nil {
 		pkt.Hostname = h
 	}

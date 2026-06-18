@@ -19,7 +19,8 @@ typedef struct {
 } service_t;
 
 typedef struct {
-    int  v;
+    int     v;
+    int64_t ts;
     char hostname[MODEL_MAX_HOSTNAME];
     char ips[MODEL_MAX_IPS][MODEL_MAX_IP_LEN];
     int  ip_count;
