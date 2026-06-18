@@ -1,0 +1,17 @@
+serial:
+  port: /dev/pi-display   # udev creates this symlink by USB VID/PID
+  baud: 115200
+
+socket:
+  path: /tmp/pi-status.sock
+
+interval: 1s
+
+alerts:
+  cpu_threshold: 80    # percent
+  temp_threshold: 70   # celsius
+
+services:
+  - nginx
+  - docker
+  - ssh

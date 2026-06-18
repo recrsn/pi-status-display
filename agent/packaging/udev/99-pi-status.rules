@@ -1,0 +1,4 @@
+# Create /dev/pi-display symlink when the ESP32-S3 USB CDC device is connected.
+# Replace ATTRS{idVendor} and ATTRS{idProduct} with the values from `lsusb`.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", \
+    SYMLINK+="pi-display", MODE="0666"

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "status.schema.json",
+  "title": "StatusPacket",
+  "description": "Pi status data pushed over USB CDC / Unix socket at ~1 Hz. Fields are additive-only; consumers must ignore unknown keys.",
+  "type": "object",
+  "required": ["v", "hostname"],
+  "properties": {
+    "v":          { "type": "integer", "const": 1 },
+    "hostname":   { "type": "string" },
+    "ips":        { "type": "array", "items": { "type": "string" } },
+    "primary_if": { "type": "string", "description": "Active network interface name" },
+    "link":       { "type": "string", "description": "Link speed/type, e.g. '1Gbps'" },
+    "temp":       { "type": ["number", "null"], "description": "CPU temperature °C" },
+    "cpu":        { "type": ["number", "null"], "description": "CPU usage 0-100" },
+    "mem":        { "type": ["number", "null"], "description": "Memory usage 0-100" },
+    "disk":       { "type": ["number", "null"], "description": "Disk usage 0-100" },
+    "uptime":     { "type": "string", "description": "Human-readable uptime, e.g. '2d 4h'" },
+    "net_tx":     { "type": ["number", "null"], "description": "Transmit bytes/sec on primary interface" },
+    "net_rx":     { "type": ["number", "null"], "description": "Receive bytes/sec on primary interface" },
+    "alert":      { "type": "boolean", "description": "True when any agent-side threshold is exceeded" },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "active"],
+        "properties": {
+          "name":   { "type": "string" },
+          "active": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+install -m 644 /usr/share/pi-status-agent/pi-status-agent.service \
+    /etc/systemd/system/pi-status-agent.service
+
+install -m 644 /usr/share/pi-status-agent/99-pi-status.rules \
+    /etc/udev/rules.d/99-pi-status.rules
+
+if [ ! -f /etc/pi-status/config.yaml ]; then
+    mkdir -p /etc/pi-status
+    install -m 644 /usr/share/pi-status-agent/config.example.yaml \
+        /etc/pi-status/config.yaml
+fi
+
+udevadm control --reload-rules
+systemctl daemon-reload
+systemctl enable --now pi-status-agent

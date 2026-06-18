@@ -1,0 +1,16 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Go
+agent/bin/
+agent/dist/
+agent/*.deb
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+*.swp

@@ -1,0 +1,8 @@
+Package: pi-status-agent
+Version: 0.1.0
+Architecture: arm64
+Maintainer: Amitosh Swain Mahapatra <amitosh.swain@gmail.com>
+Depends: systemd
+Description: Pi Status Display Agent
+ Collects system metrics and streams them over USB CDC to an ESP32-S3
+ status display. Also listens on a Unix socket for the desktop emulator.

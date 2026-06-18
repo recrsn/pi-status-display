@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "command.schema.json",
+  "title": "Command",
+  "description": "Command sent from ESP32 to Pi agent over USB CDC.",
+  "type": "object",
+  "required": ["cmd"],
+  "properties": {
+    "cmd": {
+      "type": "string",
+      "enum": ["refresh", "reboot", "shutdown"]
+    }
+  },
+  "additionalProperties": false
+}

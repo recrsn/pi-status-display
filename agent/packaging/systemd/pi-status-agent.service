@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi Status Display Agent
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/pi-status-agent --config /etc/pi-status/config.yaml
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
