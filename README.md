@@ -9,6 +9,22 @@ Raspberry Pi  --[agent]-->  USB CDC (JSON, ~1 Hz)  -->  ESP32-S3 + ST7789V2/CST8
 
 ![Emulator screenshot](firmware/docs/emulator.png)
 
+## Why
+
+I run a lot of Pis and headless servers, and wanted a quick way to spot IP address and health
+at a glance in the server room without SSH-ing in. UI heavily inspired by
+[JetKVM](https://jetkvm.com/)'s on-device display.
+
+## Hardware
+
+Built around a [Waveshare ESP32-S3-Touch-LCD-1.69](https://www.waveshare.com/product/esp32-s3-touch-lcd-1.69.htm)
+— I had a spare one with a dead WiFi radio, which doesn't matter here since everything comes
+in over USB CDC. The cheaper RP2040 variant of the same board should work too (not tested).
+Nothing stops you from wiring the bare SPI/I2C ST7789V2 + CST816 module directly to a Pi's
+GPIO instead, but you'd lose the point of this project: a USB CDC device is portable across
+any host, so the same display can be unplugged and moved between servers. A GPIO-wired
+display is soldered to one specific Pi.
+
 ## Layout
 
 - `schema/` — JSON Schema, source of truth for the wire protocol (`status.schema.json`, `command.schema.json`)
@@ -40,6 +56,22 @@ Run locally without hardware:
 ./pi-status-agent --local
 ```
 
+### Installing on a Pi
+
+```
+agent/packaging/build-deb.sh          # -> /tmp/pi-status-agent_<version>_arm64.deb
+sudo dpkg -i /tmp/pi-status-agent_*.deb   # installs binary, systemd unit, udev rule; starts the service
+```
+
+or, over SSH with key-based auth already set up:
+
+```
+agent/packaging/deploy.sh pi@your-pi.local
+```
+
+The udev rule in `agent/packaging/udev/` symlinks the ESP32-S3's USB CDC device to
+`/dev/pi-display`; edit the `idVendor`/`idProduct` in it if your board reports different USB IDs.
+
 ## Firmware / emulator
 
 Requires [PlatformIO](https://platformio.org/).
@@ -53,3 +85,10 @@ pio run -e native              # build SDL2 emulator (needs sdl2, libcjson via p
 
 The emulator connects to the same Unix socket the agent writes to
 (`/tmp/pi-status.sock` by default), so you can develop the UI without a board attached.
+
+See `firmware/README.md` for the icon regeneration and emulator-screenshot scripts.
+
+## License
+
+BSD 3-Clause, see [LICENSE](LICENSE). Icon assets under `firmware/src/ui/icons/` are generated
+from [Lucide](https://lucide.dev) (ISC License) — see LICENSE for the attribution notice.
