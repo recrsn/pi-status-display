@@ -11,14 +11,34 @@
     "hostname":   { "type": "string" },
     "ips":        { "type": "array", "items": { "type": "string" } },
     "primary_if": { "type": "string", "description": "Active network interface name" },
+    "iface_type": { "type": "string", "enum": ["wifi", "ethernet"], "description": "Type of the primary network interface" },
     "link":       { "type": "string", "description": "Link speed/type, e.g. '1Gbps'" },
     "temp":       { "type": ["number", "null"], "description": "CPU temperature °C" },
     "cpu":        { "type": ["number", "null"], "description": "CPU usage 0-100" },
     "mem":        { "type": ["number", "null"], "description": "Memory usage 0-100" },
+    "mem_used_mb": { "type": ["number", "null"], "description": "Memory used in MiB" },
     "disk":       { "type": ["number", "null"], "description": "Disk usage 0-100" },
     "uptime":     { "type": "string", "description": "Human-readable uptime, e.g. '2d 4h'" },
     "net_tx":     { "type": ["number", "null"], "description": "Transmit bytes/sec on primary interface" },
     "net_rx":     { "type": ["number", "null"], "description": "Receive bytes/sec on primary interface" },
+    "interfaces": {
+      "type": "array",
+      "description": "Per-interface breakdown of every physical NIC (eth*/en*/wlan*/wl*)",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "status"],
+        "properties": {
+          "name":    { "type": "string" },
+          "type":    { "type": "string", "enum": ["wifi", "ethernet"] },
+          "ip":      { "type": "string" },
+          "status":  { "type": "string", "enum": ["up", "down"] },
+          "ssid":    { "type": "string" },
+          "signal":  { "type": ["number", "null"], "description": "dBm, wifi only" },
+          "tx_rate": { "type": ["number", "null"], "description": "Bytes/sec" },
+          "rx_rate": { "type": ["number", "null"], "description": "Bytes/sec" }
+        }
+      }
+    },
     "alert":      { "type": "boolean", "description": "True when any agent-side threshold is exceeded" },
     "services": {
       "type": "array",

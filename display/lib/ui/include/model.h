@@ -12,11 +12,25 @@
 #define MODEL_MAX_UPTIME        32
 #define MODEL_MAX_SERVICES      16
 #define MODEL_MAX_SERVICE_NAME  48
+#define MODEL_MAX_INTERFACES    4
+#define MODEL_MAX_SSID          32
 
 typedef struct {
     char name[MODEL_MAX_SERVICE_NAME];
     bool active;
 } service_t;
+
+typedef struct {
+    char  name[MODEL_MAX_IFACE];
+    char  type[8];              /* "wifi" or "ethernet" */
+    char  ip[MODEL_MAX_IP_LEN];
+    bool  up;
+    char  ssid[MODEL_MAX_SSID]; /* wifi only */
+    float signal;                /* dBm, wifi only */
+    bool  has_signal;
+    float tx_rate;
+    float rx_rate;
+} iface_t;
 
 typedef struct {
     int     v;
@@ -25,10 +39,14 @@ typedef struct {
     char ips[MODEL_MAX_IPS][MODEL_MAX_IP_LEN];
     int  ip_count;
     char primary_if[MODEL_MAX_IFACE];
+    char iface_type[8];    /* "wifi" or "ethernet" */
     char link[MODEL_MAX_LINK];
+    iface_t interfaces[MODEL_MAX_INTERFACES];
+    int  interface_count;
     float temp;
     float cpu;
     float mem;
+    float mem_used_mb;
     float disk;
     char  uptime[MODEL_MAX_UPTIME];
     float net_tx;

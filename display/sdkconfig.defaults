@@ -1,0 +1,15 @@
+# Our data protocol talks to the USB-Serial-JTAG peripheral directly via the
+# low-level driver API (usb_serial_jtag_read/write_bytes), not through
+# stdio/console. Routing the IDF console (logs, panics) through the same
+# peripheral's VFS layer caused repeated deadlocks/asserts between the
+# console's internal ISR-driven ring buffer and our own reads and writes —
+# two independent consumers fighting over one piece of hardware. Console is
+# disabled outright rather than sent to UART0 (this board has no UART bridge
+# chip, so that UART is unconnected anyway) to guarantee nothing else ever
+# touches the USB-Serial-JTAG driver state.
+CONFIG_ESP_CONSOLE_NONE=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# LVGL's nested flex-layout widget creation (screen_*_create()) is stack
+# heavy; the default 3.5K main task stack overflows building our screens.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384

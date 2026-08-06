@@ -8,11 +8,11 @@ import (
 )
 
 type Config struct {
-	Serial   SerialConfig   `yaml:"serial"`
-	Socket   SocketConfig   `yaml:"socket"`
-	Interval time.Duration  `yaml:"interval"`
-	Alerts   AlertsConfig   `yaml:"alerts"`
-	Services []string       `yaml:"services"`
+	Serial   SerialConfig  `yaml:"serial"`
+	Socket   SocketConfig  `yaml:"socket"`
+	Interval time.Duration `yaml:"interval"`
+	Alerts   AlertsConfig  `yaml:"alerts"`
+	Services []string      `yaml:"services"`
 }
 
 type SerialConfig struct {

@@ -1,45 +1,123 @@
 #include "screen_services.h"
+#include "fonts.h"
+#include <stdio.h>
 #include <string.h>
+
+/* Layout: 240 x 280, status bar (28px) overlays the top.
+ *
+ *  ┌────────────────────────────┐
+ *  │ SERVICES              N/M  │
+ *  │                            │
+ *  │ o nginx                    │
+ *  │ o sshd                     │
+ *  │ .  postgres                │
+ *  │ o docker                   │
+ *  │  ...                       │
+ *  └────────────────────────────┘
+ */
+
+typedef struct {
+    lv_obj_t *count_label;
+    lv_obj_t *list;
+} services_widgets_t;
+
+static services_widgets_t *get_widgets(lv_obj_t *scr) {
+    return (services_widgets_t *)lv_obj_get_user_data(scr);
+}
 
 lv_obj_t *screen_services_create(void) {
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
-    lv_obj_set_style_pad_all(scr, 6, 0);
+    lv_obj_set_style_pad_hor(scr, 12, 0);
+    lv_obj_set_style_pad_top(scr, 32, 0);
+    lv_obj_set_style_pad_bottom(scr, 8, 0);
+    lv_obj_set_style_pad_row(scr, 0, 0);
     lv_obj_set_style_text_color(scr, lv_color_white(), 0);
+    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(scr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    lv_obj_t *title = lv_label_create(scr);
-    lv_label_set_text(title, "Services");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    services_widgets_t *w = static_cast<services_widgets_t *>(lv_malloc(sizeof(services_widgets_t)));
+    lv_obj_set_user_data(scr, w);
 
-    /* Table populated on each update */
-    lv_obj_t *table = lv_table_create(scr);
-    lv_table_set_col_cnt(table, 2);
-    lv_table_set_col_width(table, 0, 170);
-    lv_table_set_col_width(table, 1, 60);
-    lv_obj_set_style_bg_color(table, lv_color_black(), 0);
-    lv_obj_set_style_text_color(table, lv_color_white(), 0);
-    lv_obj_set_style_border_width(table, 0, LV_PART_ITEMS);
-    lv_obj_set_user_data(scr, table);
+    /* Header row: "SERVICES" left, "N/M" right */
+    lv_obj_t *header = lv_obj_create(scr);
+    lv_obj_set_size(header, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_ver(header, 4, 0);
+    lv_obj_set_style_pad_hor(header, 0, 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *title = lv_label_create(header);
+    lv_label_set_text(title, "SERVICES");
+    lv_obj_set_style_text_font(title, &jbmono_10, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0x3c5878), 0);
+    lv_obj_set_style_text_letter_space(title, 1, 0);
+
+    w->count_label = lv_label_create(header);
+    lv_label_set_text(w->count_label, "-/-");
+    lv_obj_set_style_text_font(w->count_label, &jbmono_12, 0);
+    lv_obj_set_style_text_color(w->count_label, lv_color_hex(0x24d4ec), 0);
+
+    /* List container - rebuilt on each update */
+    w->list = lv_obj_create(scr);
+    lv_obj_set_size(w->list, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(w->list, 0, 0);
+    lv_obj_set_style_border_width(w->list, 0, 0);
+    lv_obj_set_style_bg_opa(w->list, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(w->list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(w->list, LV_FLEX_FLOW_COLUMN);
 
     return scr;
 }
 
 void screen_services_update(lv_obj_t *scr, const status_model_t *m) {
-    lv_obj_t *table = (lv_obj_t *)lv_obj_get_user_data(scr);
+    services_widgets_t *w = get_widgets(scr);
+    char buf[32];
 
-    lv_table_set_row_cnt(table, (uint16_t)m->service_count);
+    int active_count = 0;
+    for (int i = 0; i < m->service_count; i++) {
+        if (m->services[i].active) active_count++;
+    }
+    snprintf(buf, sizeof(buf), "%d/%d", active_count, m->service_count);
+    lv_label_set_text(w->count_label, buf);
+    lv_obj_set_style_text_color(w->count_label,
+        active_count == m->service_count ? lv_color_hex(0x34d498) : lv_color_hex(0xf4a00c), 0);
+
+    lv_obj_clean(w->list);
 
     for (int i = 0; i < m->service_count; i++) {
         const service_t *s = &m->services[i];
-        lv_table_set_cell_value(table, (uint16_t)i, 0, s->name);
-        lv_table_set_cell_value(table, (uint16_t)i, 1, s->active ? "●" : "○");
 
-        lv_color_t col = s->active
-            ? lv_palette_main(LV_PALETTE_GREEN)
-            : lv_palette_main(LV_PALETTE_RED);
-        /* Color the status cell via a draw event — set via part/state style */
-        lv_obj_set_style_text_color(table, col,
-            LV_PART_ITEMS | LV_STATE_DEFAULT);
+        lv_obj_t *row = lv_obj_create(w->list);
+        lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_pad_ver(row, 7, 0);
+        lv_obj_set_style_pad_hor(row, 0, 0);
+        lv_obj_set_style_pad_column(row, 8, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+        /* LED dot */
+        lv_obj_t *dot = lv_obj_create(row);
+        lv_obj_remove_style_all(dot);
+        lv_obj_set_size(dot, 6, 6);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(dot,
+            s->active ? lv_color_hex(0x34d498) : lv_color_hex(0x1c2434), 0);
+
+        /* Service name */
+        lv_obj_t *name = lv_label_create(row);
+        lv_label_set_text(name, s->name);
+        lv_obj_set_style_text_font(name, &jbmono_12, 0);
+        lv_obj_set_style_text_color(name, lv_color_hex(0xc8e0f0), 0);
+        lv_obj_set_flex_grow(name, 1);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_CLIP);
     }
 }

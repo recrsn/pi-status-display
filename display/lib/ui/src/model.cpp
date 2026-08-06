@@ -39,8 +39,42 @@ bool model_parse(status_model_t *dst, const char *json, size_t len) {
     item = cJSON_GetObjectItemCaseSensitive(root, "primary_if");
     if (cJSON_IsString(item)) safe_strncpy(dst->primary_if, item->valuestring, sizeof(dst->primary_if));
 
+    item = cJSON_GetObjectItemCaseSensitive(root, "iface_type");
+    if (cJSON_IsString(item)) safe_strncpy(dst->iface_type, item->valuestring, sizeof(dst->iface_type));
+
     item = cJSON_GetObjectItemCaseSensitive(root, "link");
     if (cJSON_IsString(item)) safe_strncpy(dst->link, item->valuestring, sizeof(dst->link));
+
+    item = cJSON_GetObjectItemCaseSensitive(root, "interfaces");
+    if (cJSON_IsArray(item)) {
+        dst->interface_count = 0;
+        cJSON *ifc;
+        cJSON_ArrayForEach(ifc, item) {
+            if (dst->interface_count >= MODEL_MAX_INTERFACES) break;
+            iface_t *ii = &dst->interfaces[dst->interface_count];
+            memset(ii, 0, sizeof(*ii));
+
+            cJSON *name   = cJSON_GetObjectItemCaseSensitive(ifc, "name");
+            cJSON *type   = cJSON_GetObjectItemCaseSensitive(ifc, "type");
+            cJSON *ip     = cJSON_GetObjectItemCaseSensitive(ifc, "ip");
+            cJSON *status = cJSON_GetObjectItemCaseSensitive(ifc, "status");
+            cJSON *ssid   = cJSON_GetObjectItemCaseSensitive(ifc, "ssid");
+            cJSON *signal = cJSON_GetObjectItemCaseSensitive(ifc, "signal");
+            cJSON *tx     = cJSON_GetObjectItemCaseSensitive(ifc, "tx_rate");
+            cJSON *rx     = cJSON_GetObjectItemCaseSensitive(ifc, "rx_rate");
+
+            if (cJSON_IsString(name))   safe_strncpy(ii->name, name->valuestring, sizeof(ii->name));
+            if (cJSON_IsString(type))   safe_strncpy(ii->type, type->valuestring, sizeof(ii->type));
+            if (cJSON_IsString(ip))     safe_strncpy(ii->ip, ip->valuestring, sizeof(ii->ip));
+            if (cJSON_IsString(status)) ii->up = strcmp(status->valuestring, "up") == 0;
+            if (cJSON_IsString(ssid))   safe_strncpy(ii->ssid, ssid->valuestring, sizeof(ii->ssid));
+            if (cJSON_IsNumber(signal)) { ii->signal = (float)signal->valuedouble; ii->has_signal = true; }
+            if (cJSON_IsNumber(tx))     ii->tx_rate = (float)tx->valuedouble;
+            if (cJSON_IsNumber(rx))     ii->rx_rate = (float)rx->valuedouble;
+
+            dst->interface_count++;
+        }
+    }
 
     item = cJSON_GetObjectItemCaseSensitive(root, "temp");
     if (cJSON_IsNumber(item)) dst->temp = (float)item->valuedouble;
@@ -50,6 +84,9 @@ bool model_parse(status_model_t *dst, const char *json, size_t len) {
 
     item = cJSON_GetObjectItemCaseSensitive(root, "mem");
     if (cJSON_IsNumber(item)) dst->mem = (float)item->valuedouble;
+
+    item = cJSON_GetObjectItemCaseSensitive(root, "mem_used_mb");
+    if (cJSON_IsNumber(item)) dst->mem_used_mb = (float)item->valuedouble;
 
     item = cJSON_GetObjectItemCaseSensitive(root, "disk");
     if (cJSON_IsNumber(item)) dst->disk = (float)item->valuedouble;

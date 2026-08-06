@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -16,6 +17,8 @@ import (
 func main() {
 	cfgPath := flag.String("config", "/etc/pi-status/config.yaml", "path to config file")
 	local := flag.Bool("local", false, "socket-only mode: skip serial, write to Unix socket only")
+	boardLogPath := flag.String("board-log", "/tmp/pi-status-board.log",
+		"path to append raw non-JSON lines from the board's serial console (its IDF log output); empty disables")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
@@ -37,8 +40,20 @@ func main() {
 		log.Fatal("no transports available")
 	}
 
+	var boardLog *os.File
+	if *boardLogPath != "" {
+		f, err := os.OpenFile(*boardLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Printf("board log %s: %v (continuing without)", *boardLogPath, err)
+		} else {
+			boardLog = f
+			defer f.Close()
+			log.Printf("board console output: %s", *boardLogPath)
+		}
+	}
+
 	for _, t := range transports {
-		go handleCommands(t.Commands())
+		go handleCommands(t.Commands(), boardLog)
 	}
 
 	ticker := time.NewTicker(cfg.Interval)
@@ -83,14 +98,18 @@ func openTransports(cfg *config.Config) []transport.Transport {
 	return ts
 }
 
-func handleCommands(cmds <-chan []byte) {
+func handleCommands(cmds <-chan []byte, boardLog *os.File) {
 	type cmd struct {
 		Cmd string `json:"cmd"`
 	}
 	for raw := range cmds {
 		var c cmd
 		if err := json.Unmarshal(raw, &c); err != nil {
-			log.Printf("bad command %q: %v", raw, err)
+			// Not a command from us — this is a display-only device sharing
+			// its serial line with IDF's own log output, not a protocol error.
+			if boardLog != nil {
+				fmt.Fprintf(boardLog, "%s %s\n", time.Now().Format(time.RFC3339), raw)
+			}
 			continue
 		}
 		switch c.Cmd {

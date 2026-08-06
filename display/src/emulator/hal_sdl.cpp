@@ -33,7 +33,6 @@ static int            g_sock_fd = -1;
 static pthread_t      g_reader_thread;
 static lv_display_t  *g_display;
 static lv_indev_t    *g_mouse;
-static pthread_mutex_t g_lvgl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* --- Tick ----------------------------------------------------------------*/
 
@@ -63,7 +62,7 @@ static void connect_socket(void) {
 
 static void *reader_thread(void *arg) {
     (void)arg;
-    char buf[1024];
+    char buf[2048];
     size_t used = 0;
 
     for (;;) {
@@ -88,11 +87,7 @@ static void *reader_thread(void *arg) {
         char *nl;
         while ((nl = (char *)memchr(start, '\n', (size_t)(buf + used - start))) != NULL) {
             *nl = '\0';
-            if (g_data_cb) {
-                hal_lock();
-                g_data_cb(start, (size_t)(nl - start));
-                hal_unlock();
-            }
+            if (g_data_cb) g_data_cb(start, (size_t)(nl - start));
             start = nl + 1;
         }
 
@@ -102,11 +97,6 @@ static void *reader_thread(void *arg) {
     }
     return NULL;
 }
-
-/* --- Lock ----------------------------------------------------------------*/
-
-void hal_lock(void)   { pthread_mutex_lock(&g_lvgl_mutex); }
-void hal_unlock(void) { pthread_mutex_unlock(&g_lvgl_mutex); }
 
 /* --- Command sender ------------------------------------------------------*/
 
