@@ -86,9 +86,13 @@ pio run -e native              # build SDL2 emulator (needs sdl2, libcjson via p
 The emulator connects to the same Unix socket the agent writes to
 (`/tmp/pi-status.sock` by default), so you can develop the UI without a board attached.
 
-See `firmware/README.md` for the icon regeneration and emulator-screenshot scripts.
+See `firmware/README.md` for the icon/font regeneration scripts, and `scripts/` for
+repo-wide maintenance scripts (emulator screenshots, third-party license notices).
 
 ## License
 
 BSD 3-Clause, see [LICENSE](LICENSE). Icon assets under `firmware/src/ui/icons/` are generated
-from [Lucide](https://lucide.dev) (ISC License) — see LICENSE for the attribution notice.
+from [Lucide](https://lucide.dev) (ISC License) — see LICENSE for the attribution notice. Font
+assets under `firmware/src/ui/fonts/` are generated from
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (SIL Open Font License 1.1) — see
+LICENSE for the attribution notice.

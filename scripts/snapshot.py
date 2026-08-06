@@ -4,7 +4,7 @@ Convert the raw PPM dumped by hal_sdl.c's snapshot hook (press 's' in the
 running emulator) into a downscaled PNG for docs/README screenshots.
 
 Usage:
-    python3 firmware/tools/snapshot.py [-i INPUT.ppm] [-o OUTPUT.png] [--scale 0.5]
+    python3 scripts/snapshot.py [-i INPUT.ppm] [-o OUTPUT.png] [--scale 0.5]
 """
 
 import argparse
@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image
 
 DEFAULT_INPUT = Path("/tmp/pi-status-snapshot.ppm")
-DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "emulator.png"
+DEFAULT_OUTPUT = Path(__file__).resolve().parent.parent / "firmware" / "docs" / "emulator.png"
 
 
 def main() -> None:

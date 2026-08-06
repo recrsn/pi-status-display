@@ -12,15 +12,20 @@ commands and overall protocol.
   - `gen_icons.py` — regenerates `src/ui/icons/*.c` from Lucide SVGs (fetched from unpkg,
     rasterized to LVGL A8 image descriptors). Run after adding or changing an icon.
     Requires `rsvg-convert` (`brew install librsvg`) and Pillow (`pip install pillow`).
+    Output is committed.
 
     ```
     python3 tools/gen_icons.py            # regenerate all icons
     python3 tools/gen_icons.py icon_cpu   # regenerate just one
     ```
 
-  - `snapshot.py` — converts the raw PPM dumped by the native emulator (press `s` while it's
-    running) into the downscaled `docs/emulator.png` used in the top-level README.
+  - `gen_fonts.py` — downloads JetBrains Mono and regenerates `src/ui/fonts/jbmono_*.c` via
+    `lv_font_conv`. Run after changing a size or codepoint range. Output is committed.
+    Requires Node.js (invoked via `npx`).
 
     ```
-    python3 tools/snapshot.py [-i INPUT.ppm] [-o OUTPUT.png] [--scale 0.5]
+    python3 tools/gen_fonts.py
     ```
+
+See the top-level `scripts/` directory for repo-wide maintenance scripts (license notices,
+emulator screenshots).

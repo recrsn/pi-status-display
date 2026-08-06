@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Build the agent .deb and install it on a Pi over SSH.
 #
-# Usage: packaging/deploy.sh [user@host]
-# Defaults to pi@gateway.local. Requires passwordless (key-based) SSH — this
-# script does not prompt for a password.
-#
-# Kept in the repo (not run-and-discard) so redeploying to this Pi, or
-# deploying to a new one, is a single reproducible command.
+# Usage: packaging/deploy.sh user@host
+# Requires passwordless (key-based) SSH — this script does not prompt for a
+# password.
 set -euo pipefail
 
-HOST="${1:-pi@gateway.local}"
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 user@host" >&2
+    exit 1
+fi
+HOST="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DEB="$("$SCRIPT_DIR/build-deb.sh")"

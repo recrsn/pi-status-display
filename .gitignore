@@ -3,10 +3,16 @@
 .pioenvs/
 .piolibdeps/
 
+# ESP-IDF component manager (auto-fetched from idf_component.yml/dependencies.lock)
+firmware/managed_components/
+
 # Go
 agent/bin/
 agent/dist/
 agent/*.deb
+
+# Python
+__pycache__/
 
 # macOS
 .DS_Store

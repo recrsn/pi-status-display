@@ -1,10 +1,14 @@
 /*******************************************************************************
  * Size: 14 px
  * Bpp: 4
- * Opts: --font jbm/fonts/ttf/JetBrainsMono-Medium.ttf -r 0x20-0x7E -r 0xB0 --size 14 --bpp 4 --format lvgl --no-compress --lv-font-name jbmono_14 -o /Users/amitosh/Code/pi-status-display/display/lib/ui/src/fonts/jbmono_14.c
+ * Opts: --font /var/folders/m9/46z06pnx605dgznk1l7gd9_r0000gn/T/tmpu132ii5o/JetBrainsMono-Medium.ttf -r 0x20-0x7E -r 0xB0 --size 14 --bpp 4 --format lvgl --no-compress --lv-font-name jbmono_14 -o /Users/amitosh/Code/pi-status-display/firmware/src/ui/fonts/jbmono_14.c
  ******************************************************************************/
 
+#ifdef LV_LVGL_H_INCLUDE_SIMPLE
 #include "lvgl.h"
+#else
+#include "lvgl/lvgl.h"
+#endif
 
 #ifndef JBMONO_14
 #define JBMONO_14 1
