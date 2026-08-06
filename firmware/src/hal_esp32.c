@@ -14,6 +14,8 @@
  * board (github.com/waveshareteam/ESP32-S3-Touch-LCD-1.69), not guessed.
  */
 
+#ifdef ESP_PLATFORM
+
 #include "hal.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
@@ -258,3 +260,5 @@ void hal_init(hal_data_cb_t on_data) {
     init_lcd();
     init_touch();
 }
+
+#endif // ESP_PLATFORM

@@ -5,6 +5,8 @@
  * Data:    Unix domain socket at SOCKET_PATH
  */
 
+#ifndef ESP_PLATFORM
+
 #include "hal.h"
 
 #include <sys/socket.h>
@@ -124,3 +126,5 @@ void hal_init(hal_data_cb_t on_data) {
     /* Background socket reader */
     pthread_create(&g_reader_thread, NULL, reader_thread, NULL);
 }
+
+#endif // !ESP_PLATFORM

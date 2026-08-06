@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MODEL_MAX_IPS           8
 #define MODEL_MAX_IP_LEN        40   /* IPv6 worst case */
 #define MODEL_MAX_HOSTNAME      64
@@ -64,3 +68,7 @@ bool model_parse(status_model_t *dst, const char *json, size_t len);
 
 /* Singleton model shared across all screens. */
 status_model_t *model_get(void);
+
+#ifdef __cplusplus
+}
+#endif

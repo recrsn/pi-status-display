@@ -2,7 +2,11 @@
 
 #include "lvgl.h"
 
-/* Implemented by hal_esp32.cpp (firmware) and hal_sdl.cpp (emulator). */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Implemented by hal_esp32.c (firmware) and hal_sdl.c (emulator). */
 
 /* Called on each received newline-delimited JSON packet. */
 typedef void (*hal_data_cb_t)(const char *json, size_t len);
@@ -17,3 +21,7 @@ void hal_send_command(const char *cmd_json);
  * SDL driver registers lv_tick_set_cb(SDL_GetTicks) automatically;
  * firmware hal_init calls lv_tick_set_cb(hal_tick_ms). */
 uint32_t hal_tick_ms(void);
+
+#ifdef __cplusplus
+}
+#endif
