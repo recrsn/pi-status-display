@@ -7,6 +7,8 @@ status over USB CDC to an ESP32-S3 running an LVGL UI on a 1.69" ST7789V2 touch 
 Raspberry Pi  --[agent]-->  USB CDC (JSON, ~1 Hz)  -->  ESP32-S3 + ST7789V2/CST816  --[LVGL UI]
 ```
 
+![Emulator screenshot](firmware/docs/emulator.png)
+
 ## Layout
 
 - `schema/` — JSON Schema, source of truth for the wire protocol (`status.schema.json`, `command.schema.json`)

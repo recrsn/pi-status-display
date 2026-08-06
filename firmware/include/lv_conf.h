@@ -56,6 +56,15 @@
 #  define LV_USE_SDL 0
 #endif
 
+/* Snapshot: emulator-only, used by hal_sdl.c to dump a pixel-perfect PPM of
+ * the active screen (press 's') for docs screenshots, bypassing the SDL
+ * window entirely (no title bar/chrome, no macOS screencapture scaling). */
+#ifdef LVGL_EMULATOR
+#  define LV_USE_SNAPSHOT 1
+#else
+#  define LV_USE_SNAPSHOT 0
+#endif
+
 /* Fonts -----------------------------------------------------------------*/
 #define LV_FONT_MONTSERRAT_10 1
 #define LV_FONT_MONTSERRAT_12 1
