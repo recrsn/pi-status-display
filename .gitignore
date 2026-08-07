@@ -10,6 +10,7 @@ firmware/managed_components/
 agent/bin/
 agent/dist/
 agent/*.deb
+agent/config.yaml
 
 # Python
 __pycache__/

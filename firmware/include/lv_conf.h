@@ -21,18 +21,28 @@
 
 /* Color ----------------------------------------------------------------------
  * LVGL's RGB565 framebuffer is native (little-endian) byte order. The
- * ST7789V2 is fed raw RGB565 over SPI and expects big-endian (MSB first)
- * per pixel, so the firmware target needs the bytes swapped before flush;
- * SDL takes the buffer as-is on the host's native order. */
+ * ST7789V2 expects big-endian (MSB first) per pixel over SPI, so *some*
+ * layer needs to swap. Firmware (hal_esp32.c only, not this shared config)
+ * sets the display's color format to LV_COLOR_FORMAT_RGB565_SWAPPED, so
+ * the software renderer writes swapped bytes natively at draw time.
+ * LV_COLOR_16_SWAP instead does a flush-time post-pass over px_map and has
+ * a real bug in LV_DISPLAY_RENDER_MODE_DIRECT (lv_refr.c applies it at the
+ * wrong buffer offset for any area narrower than the full screen), so it's
+ * left off here rather than worked around. SDL takes the buffer as-is on
+ * the host's native order regardless. */
 #define LV_COLOR_DEPTH 16
-#ifdef LVGL_EMULATOR
-#  define LV_COLOR_16_SWAP 0
-#else
-#  define LV_COLOR_16_SWAP 1
-#endif
+#define LV_COLOR_16_SWAP 0
 
 /* Tick: SDL driver calls lv_tick_set_cb(SDL_GetTicks) automatically.
  * Firmware calls lv_tick_set_cb(hal_tick_ms) in hal_init(). */
+
+/* Refresh --------------------------------------------------------------
+ * 33ms = ~30fps target for widget/animation smoothness. Matches LVGL's
+ * own default, made explicit here rather than left implicit. Main loop
+ * polls ui_tick()/lv_timer_handler() every 5ms (main.c), well under this
+ * period, so refresh cadence is bound by LV_DEF_REFR_PERIOD, not by
+ * loop granularity. */
+#define LV_DEF_REFR_PERIOD 33
 
 /* Logging ------------------------------------------------------------------
  * On the esp32s3 target, LV_LOG_PRINTF's direct vprintf() call goes out over

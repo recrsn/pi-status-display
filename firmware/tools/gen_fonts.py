@@ -53,6 +53,11 @@ def convert(ttf: Path, size: int) -> None:
             "--format", "lvgl",
             "--no-compress",
             "--lv-font-name", f"jbmono_{size}",
+            # Default fallback path assumes lv_conf.h sits next to a
+            # top-level `lvgl/` dir; doesn't match our ESP-IDF managed
+            # component layout (managed_components/lvgl__lvgl). The rest of
+            # ui/ just includes "lvgl.h" directly (LV_CONF_INCLUDE_SIMPLE).
+            "--lv-include", "lvgl.h",
             "-o", str(out),
         ],
         check=True,

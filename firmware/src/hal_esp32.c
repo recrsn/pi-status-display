@@ -26,8 +26,10 @@
 #include "driver/i2c.h"
 #include "driver/gpio.h"
 #include "driver/usb_serial_jtag.h"
+#include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include <assert.h>
 #include "freertos/task.h"
 #include <string.h>
 
@@ -48,7 +50,7 @@
 #define LCD_CMD_BITS 8
 #define LCD_PARAM_BITS 8
 #define LCD_SPI_HOST SPI2_HOST
-#define LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
+#define LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
 
 #define TOUCH_I2C_PORT I2C_NUM_0
 
@@ -73,9 +75,38 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io,
     return false;
 }
 
+static volatile uint32_t g_flush_count;
+
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
-    esp_lcd_panel_draw_bitmap(g_panel,
-        area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
+    g_flush_count++;
+    /* In LV_DISPLAY_RENDER_MODE_DIRECT, layer->buf_area is always the whole
+     * screen (lv_refr.c) — px_map is the constant full-buffer base pointer,
+     * not offset/strided to `area`, on every call. esp_lcd_panel_draw_bitmap
+     * has no stride parameter, so honoring `area`'s x-range as-is (narrower
+     * than the buffer's real row width) feeds it misaligned rows past the
+     * first. Extending to the full row width keeps addressing correct —
+     * full-width rows are contiguous in a row-major buffer, so this is a
+     * valid tightly-packed span sized to just the dirty rows, not the
+     * whole frame. */
+    uint16_t *buf = (uint16_t *)px_map;
+
+    /* Extending to the full row width for the transfer itself keeps
+     * addressing correct regardless of swap range — full-width rows are
+     * contiguous in a row-major buffer, satisfying esp_lcd_panel_draw_bitmap's
+     * no-stride requirement, sized to just the dirty rows, not the whole
+     * frame. See the earlier comment history in git blame for the
+     * full diagnosis (px_map is always the whole-buffer base pointer in
+     * LV_DISPLAY_RENDER_MODE_DIRECT, not offset to `area`). */
+    uint16_t *row_start = buf + (size_t)area->y1 * LCD_HOR_RES;
+    esp_lcd_panel_draw_bitmap(g_panel, 0, area->y1, LCD_HOR_RES, area->y2 + 1, row_start);
+}
+
+/* Diagnostic: is a slow tick one big transfer, or many small dispatches
+ * each paying fixed per-flush overhead? See hal.h. */
+uint32_t hal_get_and_reset_flush_count(void) {
+    uint32_t n = g_flush_count;
+    g_flush_count = 0;
+    return n;
 }
 
 /* ---- Touch read callback -------------------------------------------------*/
@@ -143,6 +174,12 @@ void hal_send_command(const char *cmd_json) {
     usb_serial_jtag_write_bytes(&nl, 1, portMAX_DELAY);
 }
 
+void hal_debug_print(const char *line) {
+    usb_serial_jtag_write_bytes(line, strlen(line), portMAX_DELAY);
+    const char nl = '\n';
+    usb_serial_jtag_write_bytes(&nl, 1, portMAX_DELAY);
+}
+
 /* ---- Init helpers --------------------------------------------------------*/
 
 static void init_lcd(void) {
@@ -158,7 +195,14 @@ static void init_lcd(void) {
         .sclk_io_num   = PIN_LCD_SCLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = LCD_HOR_RES * 40 * sizeof(uint16_t),
+        /* Must cover the largest single flush, which since DIRECT mode
+         * moved to a full-frame draw buffer can be up to the whole
+         * screen. Undersized here means the SPI driver silently splits
+         * one logical flush into multiple hardware transactions, each
+         * firing its own completion callback -> lv_display_flush_ready()
+         * called more times than LVGL expects -> buffer-swap bookkeeping
+         * desyncs over time (visible as garbage after a few seconds). */
+        .max_transfer_sz = LCD_HOR_RES * LCD_VER_RES * sizeof(uint16_t),
     };
     spi_bus_initialize(LCD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO);
 
@@ -178,12 +222,12 @@ static void init_lcd(void) {
 
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = PIN_LCD_RST,
-        .rgb_ele_order  = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
     esp_lcd_new_panel_st7789(io_handle, &panel_cfg, &g_panel);
     esp_lcd_panel_reset(g_panel);
     esp_lcd_panel_init(g_panel);
+
     /* Panel-specific quirks for this exact module (Waveshare 1.69"):
      * mirrored in both axes, 20px vertical gap (driver IC framebuffer is
      * taller than the visible 280px), and inverted color. */
@@ -195,9 +239,35 @@ static void init_lcd(void) {
 
     g_display = lv_display_create(LCD_HOR_RES, LCD_VER_RES);
     lv_display_set_flush_cb(g_display, lvgl_flush_cb);
-    static uint16_t draw_buf[LCD_HOR_RES * 40];
-    lv_display_set_buffers(g_display, draw_buf, NULL, sizeof(draw_buf),
-                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+    /* ST7789 wants big-endian RGB565 over SPI; LVGL's software renderer
+     * writes swapped bytes natively when told the buffer is in this
+     * format, so no flush-time byte swap or panel RAMCTRL override is
+     * needed. */
+    lv_display_set_color_format(g_display, LV_COLOR_FORMAT_RGB565_SWAPPED);
+
+    /* Full-frame buffer instead of a 40-line rolling buffer. The
+     * frame-time counter showed the old PARTIAL-mode cost wasn't SPI bit
+     * time — it was ~3.7ms fixed dispatch overhead paid per flush call,
+     * ~18 times per data update (one per scattered small widget), not
+     * per byte. DIRECT mode renders every dirty area into this one
+     * screen-sized buffer and flushes far fewer, larger regions (measured:
+     * 70ms/18 flushes -> 25ms/5 flushes).
+     *
+     * Tried this buffer in PSRAM (8MB Octal, confirmed present on this
+     * module) to avoid the internal-SRAM cost, with MALLOC_CAP_DMA and
+     * 64-byte cache-line alignment to keep the SPI driver's per-transfer
+     * cache writeback correct. Still produced visible corruption, worse
+     * than before those fixes — evidently still missing something about
+     * making DMA-from-PSRAM cache-coherent here. Internal SRAM has no
+     * such coherency hazard (not behind the same cached/external-bus
+     * path) and is what ran clean for this whole project before today;
+     * 134KB fits comfortably in the 320KB budget. Revisit PSRAM only
+     * with a from-scratch root-cause, not another targeted patch. */
+    size_t draw_buf_size = LCD_HOR_RES * LCD_VER_RES * sizeof(uint16_t);
+    uint16_t *draw_buf = heap_caps_malloc(draw_buf_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    assert(draw_buf);
+    lv_display_set_buffers(g_display, draw_buf, NULL, draw_buf_size,
+                           LV_DISPLAY_RENDER_MODE_DIRECT);
 }
 
 static void init_touch(void) {
@@ -252,7 +322,12 @@ void hal_init(hal_data_cb_t on_data) {
     usb_serial_jtag_driver_config_t usb_cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     usb_serial_jtag_driver_install(&usb_cfg);
 
-    xTaskCreate(usb_rx_task, "usb_rx", 4096, NULL, 5, NULL);
+    /* Pinned to core 1: app_main (LVGL render/flush, CONFIG_ESP_MAIN_TASK_AFFINITY)
+     * runs on core 0. Left unpinned, the scheduler is free to place this
+     * higher-priority task (5 vs main's 1) on core 0 too, where it can
+     * preempt a render pass exactly when new serial data arrives — the
+     * frame-time counter caught spikes lining up with parse/update calls. */
+    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 4096, NULL, 5, NULL, 1);
 
     lv_init();
     lv_tick_set_cb(hal_tick_ms);

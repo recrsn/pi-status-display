@@ -6,7 +6,9 @@
 #include "screen_network.h"
 #include "screen_services.h"
 #include <string.h>
+#include <stdio.h>
 #include <atomic>
+#include <lvgl.h>
 
 #define DATA_TIMEOUT_MS 3000
 
@@ -163,17 +165,39 @@ void ui_on_data(const char *json, size_t len) {
 /* Applies a freshly parsed model to the widgets. Runs on the LVGL-owning
  * task only, called from ui_tick(). */
 static void apply_model_update(status_model_t *m) {
+    lv_display_t *disp = lv_display_get_default();
+    lv_display_enable_invalidation(disp, false);
+
+    uint32_t t0 = hal_tick_ms();
     statusbar_update(m);
 
+    uint32_t t1 = hal_tick_ms();
     if (lv_screen_active() == scr_connecting) {
         current_screen = SCR_OVERVIEW;
         update_page_dots(current_screen);
         lv_screen_load_anim(screens[SCR_OVERVIEW], LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
     }
 
+    uint32_t t2 = hal_tick_ms();
     screen_overview_update(screens[SCR_OVERVIEW], m);
+
+    uint32_t t3 = hal_tick_ms();
     screen_network_update(screens[SCR_NETWORK], m);
+
+    uint32_t t4 = hal_tick_ms();
     screen_services_update(screens[SCR_SERVICES], m);
+
+    uint32_t t5 = hal_tick_ms();
+    lv_display_enable_invalidation(disp, true);
+    lv_obj_invalidate(lv_screen_active());
+    lv_obj_invalidate(lv_layer_top());
+
+    char line[128];
+    snprintf(line, sizeof(line),
+             "update ms: statusbar=%u switch=%u overview=%u network=%u services=%u",
+             (unsigned)(t1 - t0), (unsigned)(t2 - t1), (unsigned)(t3 - t2),
+             (unsigned)(t4 - t3), (unsigned)(t5 - t4));
+    hal_debug_print(line);
 }
 
 /* Drains every line queued since the last tick. Parsing (which mutates the
@@ -184,13 +208,60 @@ static void drain_rx_ring(status_model_t *m) {
 
     while (tail != head) {
         rx_slot_t *slot = &g_rx_ring[tail % RX_RING_SIZE];
-        if (model_parse(m, slot->data, slot->len)) {
+        uint32_t t0 = hal_tick_ms();
+        bool parsed = model_parse(m, slot->data, slot->len);
+        uint32_t t1 = hal_tick_ms();
+        if (parsed) {
+            char line[64];
+            snprintf(line, sizeof(line), "parse ms: %u", (unsigned)(t1 - t0));
+            hal_debug_print(line);
             m->last_update_ms = hal_tick_ms();
             apply_model_update(m);
         }
         tail++;
     }
     g_rx_tail.store(tail, std::memory_order_release);
+}
+
+/* Times lv_timer_handler() (render + flush dispatch) and emits an avg/max
+ * summary once a second, to check whether a given change (buffer mode, SPI
+ * clock, ...) actually moves the needle against the 33ms/30fps budget. */
+static void run_timer_handler_with_stats(void) {
+    static uint32_t window_start_ms = 0;
+    static uint32_t sum_ms = 0;
+    static uint32_t max_ms = 0;
+    static uint32_t count = 0;
+
+    uint32_t t0 = hal_tick_ms();
+    lv_timer_handler();
+    uint32_t dt = hal_tick_ms() - t0;
+    uint32_t flushes = hal_get_and_reset_flush_count();
+
+    /* One big transfer or many small dispatches? Only log on ticks that
+     * actually cost something, to avoid drowning the idle ~0ms ticks. */
+    if (dt >= 10) {
+        char line[64];
+        snprintf(line, sizeof(line), "slow tick: %ums, %u flush calls (%uus/flush)",
+                 (unsigned)dt, (unsigned)flushes,
+                 flushes ? (unsigned)(dt * 1000 / flushes) : 0);
+        hal_debug_print(line);
+    }
+
+    if (window_start_ms == 0) window_start_ms = t0;
+    sum_ms += dt;
+    if (dt > max_ms) max_ms = dt;
+    count++;
+
+    if (t0 - window_start_ms >= 1000) {
+        char line[64];
+        snprintf(line, sizeof(line), "frame ms: avg=%u max=%u n=%u",
+                 (unsigned)(count ? sum_ms / count : 0), (unsigned)max_ms, (unsigned)count);
+        hal_debug_print(line);
+        window_start_ms = t0;
+        sum_ms = 0;
+        max_ms = 0;
+        count = 0;
+    }
 }
 
 void ui_tick(void) {
@@ -215,5 +286,5 @@ void ui_tick(void) {
         }
     }
 
-    lv_timer_handler();
+    run_timer_handler_with_stats();
 }

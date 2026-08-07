@@ -110,6 +110,14 @@ void hal_send_command(const char *cmd_json) {
     write(g_sock_fd, "\n", 1);
 }
 
+void hal_debug_print(const char *line) {
+    fprintf(stderr, "%s\n", line);
+}
+
+uint32_t hal_get_and_reset_flush_count(void) {
+    return 0;
+}
+
 /* --- Screenshot (docs) -----------------------------------------------------
  * Press 's' to dump the active screen to a raw PPM, pixel-for-pixel as LVGL
  * rendered it — no window chrome, no macOS screencapture/Retina scaling.

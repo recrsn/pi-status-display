@@ -17,8 +17,8 @@ import (
 func main() {
 	cfgPath := flag.String("config", "/etc/pi-status/config.yaml", "path to config file")
 	local := flag.Bool("local", false, "socket-only mode: skip serial, write to Unix socket only")
-	boardLogPath := flag.String("board-log", "/tmp/pi-status-board.log",
-		"path to append raw non-JSON lines from the board's serial console (its IDF log output); empty disables")
+	boardLogPath := flag.String("board-log", "-",
+		"where to write raw non-JSON lines from the board's serial console (its IDF log output); \"-\" for stdout, empty disables")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
@@ -41,7 +41,12 @@ func main() {
 	}
 
 	var boardLog *os.File
-	if *boardLogPath != "" {
+	switch *boardLogPath {
+	case "":
+		// disabled
+	case "-":
+		boardLog = os.Stdout
+	default:
 		f, err := os.OpenFile(*boardLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			log.Printf("board log %s: %v (continuing without)", *boardLogPath, err)

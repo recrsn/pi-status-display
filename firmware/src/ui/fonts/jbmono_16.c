@@ -1,13 +1,13 @@
 /*******************************************************************************
  * Size: 16 px
  * Bpp: 4
- * Opts: --font /var/folders/m9/46z06pnx605dgznk1l7gd9_r0000gn/T/tmpu132ii5o/JetBrainsMono-Medium.ttf -r 0x20-0x7E -r 0xB0 --size 16 --bpp 4 --format lvgl --no-compress --lv-font-name jbmono_16 -o /Users/amitosh/Code/pi-status-display/firmware/src/ui/fonts/jbmono_16.c
+ * Opts: --font /var/folders/m9/46z06pnx605dgznk1l7gd9_r0000gn/T/tmpw1avsdw4/JetBrainsMono-Medium.ttf -r 0x20-0x7E -r 0xB0 --size 16 --bpp 4 --format lvgl --no-compress --lv-font-name jbmono_16 --lv-include lvgl.h -o /Users/amitosh/Code/pi-status-display/firmware/src/ui/fonts/jbmono_16.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
 #include "lvgl.h"
 #else
-#include "lvgl/lvgl.h"
+#include "lvgl.h"
 #endif
 
 #ifndef JBMONO_16

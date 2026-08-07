@@ -13,3 +13,20 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # LVGL's nested flex-layout widget creation (screen_*_create()) is stack
 # heavy; the default 3.5K main task stack overflows building our screens.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# 100Hz default tick (10ms) is coarse for LVGL's animation timer; 1000Hz
+# gives smoother easing at the cost of slightly higher tick-ISR overhead.
+CONFIG_FREERTOS_HZ=1000
+
+# Board default is 160MHz. This is a wall-powered, always-on device with
+# no battery to conserve, so run the ESP32-S3 at its 240MHz ceiling.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ=240
+
+# This module is a 16MB flash / 8MB PSRAM part (esptool flash_id confirms
+# both), which is the ESP32-S3-WROOM-1 N16R8 combo — Octal PSRAM, not
+# Quad. Mode must match the physically populated PSRAM or boot hangs.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
