@@ -22,11 +22,6 @@ void hal_send_command(const char *cmd_json);
  * on the emulator it goes to stderr. */
 void hal_debug_print(const char *line);
 
-/* Number of display-flush callbacks since the last call, then resets to 0.
- * Diagnostic for telling "one big transfer" apart from "many small flush
- * dispatches" as the cost of a slow tick. Emulator has no such concept. */
-uint32_t hal_get_and_reset_flush_count(void);
-
 /* Return monotonic milliseconds for timeout detection (not the LVGL tick).
  * SDL driver registers lv_tick_set_cb(SDL_GetTicks) automatically;
  * firmware hal_init calls lv_tick_set_cb(hal_tick_ms). */

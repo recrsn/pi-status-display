@@ -31,6 +31,7 @@
 #include "freertos/FreeRTOS.h"
 #include <assert.h>
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 /* ---- Pin map (Waveshare ESP32-S3-Touch-LCD-1.69) -----------------------*/
@@ -50,9 +51,15 @@
 #define LCD_CMD_BITS 8
 #define LCD_PARAM_BITS 8
 #define LCD_SPI_HOST SPI2_HOST
-#define LCD_PIXEL_CLOCK_HZ (60 * 1000 * 1000)
+#define LCD_PIXEL_CLOCK_HZ (80 * 1000 * 1000)
 
 #define TOUCH_I2C_PORT I2C_NUM_0
+
+/* Guards usb_serial_jtag_write_bytes: parsing now runs on the RX task
+ * (core 1) and can call hal_debug_print concurrently with the LVGL task's
+ * (core 0) own debug/command writes. Without this, interleaved writes from
+ * both cores would garble each other's lines on the wire. */
+static SemaphoreHandle_t g_tx_mutex;
 
 static hal_data_cb_t  g_data_cb;
 static lv_display_t  *g_display;
@@ -75,10 +82,7 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io,
     return false;
 }
 
-static volatile uint32_t g_flush_count;
-
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
-    g_flush_count++;
     /* In LV_DISPLAY_RENDER_MODE_DIRECT, layer->buf_area is always the whole
      * screen (lv_refr.c) — px_map is the constant full-buffer base pointer,
      * not offset/strided to `area`, on every call. esp_lcd_panel_draw_bitmap
@@ -99,14 +103,6 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px
      * LV_DISPLAY_RENDER_MODE_DIRECT, not offset to `area`). */
     uint16_t *row_start = buf + (size_t)area->y1 * LCD_HOR_RES;
     esp_lcd_panel_draw_bitmap(g_panel, 0, area->y1, LCD_HOR_RES, area->y2 + 1, row_start);
-}
-
-/* Diagnostic: is a slow tick one big transfer, or many small dispatches
- * each paying fixed per-flush overhead? See hal.h. */
-uint32_t hal_get_and_reset_flush_count(void) {
-    uint32_t n = g_flush_count;
-    g_flush_count = 0;
-    return n;
 }
 
 /* ---- Touch read callback -------------------------------------------------*/
@@ -168,16 +164,20 @@ static void usb_rx_task(void *arg) {
 /* ---- Command sender ----------------------------------------------------*/
 
 void hal_send_command(const char *cmd_json) {
+    xSemaphoreTake(g_tx_mutex, portMAX_DELAY);
     size_t len = strlen(cmd_json);
     usb_serial_jtag_write_bytes(cmd_json, len, portMAX_DELAY);
     const char nl = '\n';
     usb_serial_jtag_write_bytes(&nl, 1, portMAX_DELAY);
+    xSemaphoreGive(g_tx_mutex);
 }
 
 void hal_debug_print(const char *line) {
+    xSemaphoreTake(g_tx_mutex, portMAX_DELAY);
     usb_serial_jtag_write_bytes(line, strlen(line), portMAX_DELAY);
     const char nl = '\n';
     usb_serial_jtag_write_bytes(&nl, 1, portMAX_DELAY);
+    xSemaphoreGive(g_tx_mutex);
 }
 
 /* ---- Init helpers --------------------------------------------------------*/
@@ -316,6 +316,8 @@ static void init_touch(void) {
 
 void hal_init(hal_data_cb_t on_data) {
     g_data_cb = on_data;
+    g_tx_mutex = xSemaphoreCreateMutex();
+    assert(g_tx_mutex);
 
     /* Console is disabled (sdkconfig.defaults); we own USB-Serial-JTAG
      * outright via the low-level driver, no VFS/stdio involved. */
@@ -326,8 +328,13 @@ void hal_init(hal_data_cb_t on_data) {
      * runs on core 0. Left unpinned, the scheduler is free to place this
      * higher-priority task (5 vs main's 1) on core 0 too, where it can
      * preempt a render pass exactly when new serial data arrives — the
-     * frame-time counter caught spikes lining up with parse/update calls. */
-    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 4096, NULL, 5, NULL, 1);
+     * frame-time counter caught spikes lining up with parse/update calls.
+     * ui_on_data (called from here) now also does the JSON parse itself
+     * (cJSON), so this core-1/core-0 split keeps parsing fully off the
+     * render+DMA core, not just line framing. Stack bumped from the prior
+     * 4096 to cover cJSON's parse-time recursion plus a status_model_t
+     * struct copy (~1.8KB) that framing-only code never touched. */
+    xTaskCreatePinnedToCore(usb_rx_task, "usb_rx", 8192, NULL, 5, NULL, 1);
 
     lv_init();
     lv_tick_set_cb(hal_tick_ms);

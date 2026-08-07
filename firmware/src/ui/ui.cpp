@@ -22,19 +22,22 @@ static lv_obj_t *screens[SCR_COUNT];
 static lv_obj_t *scr_connecting;
 static int       current_screen = SCR_OVERVIEW;
 
-/* Lock-free single-producer/single-consumer ring buffer handing raw lines
- * from the RX task (usb_rx_task / socket reader_thread) to ui_tick() on the
- * LVGL-owning task. ui_on_data() never parses or touches LVGL — it only
- * copies bytes — so status_model_t and every widget are touched by exactly
- * one task. head/tail are monotonic counters; a slot at index i is safe for
+/* Lock-free single-producer/single-consumer ring buffer handing fully
+ * parsed models from the RX task (usb_rx_task / socket reader_thread) to
+ * ui_tick() on the LVGL-owning task. ui_on_data() runs entirely on the RX
+ * task (pinned to core 1, opposite LVGL render + DMA on core 0, see
+ * hal_esp32.c) — it parses JSON there via model_parse() into a scratch
+ * struct, so cJSON's cost never competes with core 0's render/flush work.
+ * status_model_t is a flat POD struct (no pointers), so a snapshot copy
+ * into a ring slot is all that's needed to hand it across cores; only the
+ * RX task ever writes model_parse()'s dst, only ui_tick() ever touches
+ * widgets. head/tail are monotonic counters; a slot at index i is safe for
  * the consumer to read once it observes head > i, and safe for the producer
  * to reuse once it observes tail > i - RX_RING_SIZE. */
 #define RX_RING_SIZE 4
-#define RX_LINE_MAX  2048
 
 struct rx_slot_t {
-    char   data[RX_LINE_MAX];
-    size_t len;
+    status_model_t model;
 };
 
 static rx_slot_t g_rx_ring[RX_RING_SIZE];
@@ -139,25 +142,27 @@ void ui_init(void) {
     lv_screen_load(scr_connecting);
 }
 
-/* Runs on the RX task. Copies the raw line into the ring and returns —
- * never parses JSON, never touches the model or LVGL. Only the latest state
- * matters, so if the consumer has fallen behind (unrealistic at ~1 pkt/s)
- * the whole unread backlog is dropped rather than the new line. */
+/* Runs on the RX task (core 1). Parses JSON here — kept off core 0 so it
+ * never competes with LVGL render/flush dispatch or the SPI DMA ISR, both
+ * of which run on core 0 (see hal_esp32.c). `staging` persists across calls
+ * (same task, single producer) so a packet that omits a field leaves the
+ * prior value in place, exactly as when parsing wrote directly into the
+ * shared model. Only the fully parsed snapshot crosses to the consumer. */
 void ui_on_data(const char *json, size_t len) {
-    if (len >= RX_LINE_MAX) len = RX_LINE_MAX - 1;
+    static status_model_t staging = {};
 
+    if (!model_parse(&staging, json, len)) return;
+
+    staging.last_update_ms = hal_tick_ms();
+
+    /* Only the latest state matters, so if the consumer has fallen behind
+     * (unrealistic at ~1 pkt/s) the whole unread backlog is dropped rather
+     * than the new snapshot. */
     uint32_t head = g_rx_head.load(std::memory_order_relaxed);
     uint32_t tail = g_rx_tail.load(std::memory_order_acquire);
     if (head - tail >= RX_RING_SIZE) g_rx_tail.store(head, std::memory_order_release);
 
-    rx_slot_t *slot = &g_rx_ring[head % RX_RING_SIZE];
-    memcpy(slot->data, json, len);
-    slot->data[len] = '\0'; /* cJSON_Parse expects a C string; len is capped
-                              * above so this is always in-bounds. Without it,
-                              * a slot reused for a shorter line than it last
-                              * held leaves stale bytes past len unterminated,
-                              * so cJSON reads into leftover garbage. */
-    slot->len = len;
+    g_rx_ring[head % RX_RING_SIZE].model = staging;
 
     g_rx_head.store(head + 1, std::memory_order_release);
 }
@@ -168,100 +173,44 @@ static void apply_model_update(status_model_t *m) {
     lv_display_t *disp = lv_display_get_default();
     lv_display_enable_invalidation(disp, false);
 
-    uint32_t t0 = hal_tick_ms();
     statusbar_update(m);
 
-    uint32_t t1 = hal_tick_ms();
     if (lv_screen_active() == scr_connecting) {
         current_screen = SCR_OVERVIEW;
         update_page_dots(current_screen);
         lv_screen_load_anim(screens[SCR_OVERVIEW], LV_SCR_LOAD_ANIM_FADE_IN, 200, 0, false);
     }
 
-    uint32_t t2 = hal_tick_ms();
     screen_overview_update(screens[SCR_OVERVIEW], m);
-
-    uint32_t t3 = hal_tick_ms();
     screen_network_update(screens[SCR_NETWORK], m);
-
-    uint32_t t4 = hal_tick_ms();
     screen_services_update(screens[SCR_SERVICES], m);
 
-    uint32_t t5 = hal_tick_ms();
+    /* Verified empirically: letting each widget setter's own small-area
+     * invalidate stand, instead of merging into one full-screen invalidate,
+     * drove flush count from 1/tick to ~18/tick — each scattered dirty rect
+     * (bar, label, icon) pays its own ~3-4ms fixed SPI-dispatch overhead,
+     * same failure mode the PARTIAL-mode buffer had. One full-screen flush
+     * transfers more bytes but pays that overhead once, and wins at the
+     * current 80MHz SPI clock. */
     lv_display_enable_invalidation(disp, true);
     lv_obj_invalidate(lv_screen_active());
     lv_obj_invalidate(lv_layer_top());
-
-    char line[128];
-    snprintf(line, sizeof(line),
-             "update ms: statusbar=%u switch=%u overview=%u network=%u services=%u",
-             (unsigned)(t1 - t0), (unsigned)(t2 - t1), (unsigned)(t3 - t2),
-             (unsigned)(t4 - t3), (unsigned)(t5 - t4));
-    hal_debug_print(line);
 }
 
-/* Drains every line queued since the last tick. Parsing (which mutates the
- * single shared status_model_t) happens here, on the LVGL-owning task only. */
+/* Drains every model snapshot queued since the last tick. Parsing already
+ * happened on the RX task (core 1); this just publishes the snapshot to the
+ * shared status_model_t and applies it to widgets, on the LVGL-owning task
+ * (core 0) only. */
 static void drain_rx_ring(status_model_t *m) {
     uint32_t tail = g_rx_tail.load(std::memory_order_relaxed);
     uint32_t head = g_rx_head.load(std::memory_order_acquire);
 
     while (tail != head) {
-        rx_slot_t *slot = &g_rx_ring[tail % RX_RING_SIZE];
-        uint32_t t0 = hal_tick_ms();
-        bool parsed = model_parse(m, slot->data, slot->len);
-        uint32_t t1 = hal_tick_ms();
-        if (parsed) {
-            char line[64];
-            snprintf(line, sizeof(line), "parse ms: %u", (unsigned)(t1 - t0));
-            hal_debug_print(line);
-            m->last_update_ms = hal_tick_ms();
-            apply_model_update(m);
-        }
+        *m = g_rx_ring[tail % RX_RING_SIZE].model;
+        apply_model_update(m);
         tail++;
     }
     g_rx_tail.store(tail, std::memory_order_release);
-}
-
-/* Times lv_timer_handler() (render + flush dispatch) and emits an avg/max
- * summary once a second, to check whether a given change (buffer mode, SPI
- * clock, ...) actually moves the needle against the 33ms/30fps budget. */
-static void run_timer_handler_with_stats(void) {
-    static uint32_t window_start_ms = 0;
-    static uint32_t sum_ms = 0;
-    static uint32_t max_ms = 0;
-    static uint32_t count = 0;
-
-    uint32_t t0 = hal_tick_ms();
-    lv_timer_handler();
-    uint32_t dt = hal_tick_ms() - t0;
-    uint32_t flushes = hal_get_and_reset_flush_count();
-
-    /* One big transfer or many small dispatches? Only log on ticks that
-     * actually cost something, to avoid drowning the idle ~0ms ticks. */
-    if (dt >= 10) {
-        char line[64];
-        snprintf(line, sizeof(line), "slow tick: %ums, %u flush calls (%uus/flush)",
-                 (unsigned)dt, (unsigned)flushes,
-                 flushes ? (unsigned)(dt * 1000 / flushes) : 0);
-        hal_debug_print(line);
-    }
-
-    if (window_start_ms == 0) window_start_ms = t0;
-    sum_ms += dt;
-    if (dt > max_ms) max_ms = dt;
-    count++;
-
-    if (t0 - window_start_ms >= 1000) {
-        char line[64];
-        snprintf(line, sizeof(line), "frame ms: avg=%u max=%u n=%u",
-                 (unsigned)(count ? sum_ms / count : 0), (unsigned)max_ms, (unsigned)count);
-        hal_debug_print(line);
-        window_start_ms = t0;
-        sum_ms = 0;
-        max_ms = 0;
-        count = 0;
-    }
 }
 
 void ui_tick(void) {
@@ -286,5 +235,5 @@ void ui_tick(void) {
         }
     }
 
-    run_timer_handler_with_stats();
+    lv_timer_handler();
 }
